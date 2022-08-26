@@ -109,23 +109,11 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
         single_flows = 0
 
         body = ev.msg.body
-        #print(body)
-
-        
-
-        #print(body, type(body))
-
-        # self.logger.info('datapath         '
-        #                  'source ip           dst ip           '
-        #                  'out-port       packets          bytes')
-        # self.logger.info('---------------- '
-        #                  '------------------ ----------------- '
-        #                  '-------- ----------------   ----------------  ')
         for stat in sorted([flow for flow in body if flow.priority == 1],
                            key=lambda flow: (flow.match['ipv4_src'],
                                              flow.match['ipv4_dst'])):
             
-            with open('/home/sdnonos/demo.txt', 'a', encoding='UTF8') as f:
+            with open('demo.txt', 'a', encoding='UTF8') as f:
                 f.write(str(stat))
                 f.write('\n')
 
@@ -138,13 +126,7 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
             elif stat.match['ip_proto']==17:
                 udp_flows.append([stat.match['udp_src'],stat.match['udp_dst'],stat.match['ipv4_src'],stat.match['ipv4_dst']])
                 
-            
-
-            # self.logger.info('%016x %17s %17s %8x %16d %16d',
-            #                  ev.msg.datapath.id,
-            #                  stat.match['ipv4_src'], stat.match['ipv4_dst'],
-            #                  stat.instructions[0].actions[0].port,
-            #                  stat.packet_count, stat.byte_count)
+  
         
         total_flows = len(udp_flows)+len(tcp_flows)
         med_pkt,mean_pkt=self._mean_median(flow_packet_count)
@@ -153,15 +135,16 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
         pair_flows = self._count_pair_flows(udp_flows,tcp_flows)
         single_flows = (len(udp_flows)+len(tcp_flows)-(pair_flows*2))
 
-        #print('---------------------------------------x----------------------------')
-        #print(self.single_flows_curr,single_flows,len(body))
+        
+
 
         if single_flows > 0:
             self.single_flows_growth = ((single_flows - self.single_flows_curr)/self.single_flows_curr)*100
             self.single_flows_curr = single_flows
         
 
-        if med_pkt > 0: 
+        if med_pkt > 0:
+            print('---------------------------------------x----------------------------')
             print('Las estadísticas son: \n Total de flujos: %d \n Tamaño medio y mediana de paquetes: %f - %f\n'
                 ' Media de Bytes y mediana de Bytes: %f - %f\n Duración: %f - %f\n'
                 ' Flujos únicos: %d \n Flujos pares: %d \n Crecimiento de flujos únicos: %f%%' 
@@ -176,14 +159,3 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
     def _port_stats_reply_handler(self, ev):
         body = ev.msg.body
 
-        # self.logger.info('datapath         port     '
-        #                  'rx-pkts  rx-bytes rx-error '
-        #                  'tx-pkts  tx-bytes tx-error')
-        # self.logger.info('---------------- -------- '
-        #                  '-------- -------- -------- '
-        #                  '-------- -------- --------')
-        # for stat in sorted(body, key=attrgetter('port_no')):
-        #     self.logger.info('%016x %8x %8d %8d %8d %8d %8d %8d',
-        #                      ev.msg.datapath.id, stat.port_no,
-        #                      stat.rx_packets, stat.rx_bytes, stat.rx_errors,
-        #                      stat.tx_packets, stat.tx_bytes, stat.tx_errors)
