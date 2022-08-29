@@ -31,6 +31,8 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
         self.monitor_thread = hub.spawn(self._monitor)
         self.single_flows_growth = 0
         self.single_flows_curr = 1
+        self.dict_flows = {}
+        self.seq_stats = 0
 
     @set_ev_cls(ofp_event.EventOFPStateChange,
                 [MAIN_DISPATCHER, DEAD_DISPATCHER])
@@ -46,10 +48,16 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
                 del self.datapaths[datapath.id]
 
     def _monitor(self):
+        
         while True:
+            self._calc_print()
+            self.dict_flows={}
             for dp in self.datapaths.values():
+                self.dict_flows[dp.id] = {'flow_packet_count':[],'flow_byte_count':[],'flow_duration':[],
+                'udp_flows':[],'tcp_flows':[]}
                 self._request_stats(dp)
             hub.sleep(10)
+            self.seq_stats = self.seq_stats + 1
     
     def _mean_median(self,flows):
         mean_flows = 0
@@ -85,6 +93,33 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
         
         return count
 
+    def _calc_print(self):
+
+        pair_flows = 0
+        single_flows = 0
+
+        for key in self.dict_flows:
+            total_flows = len(self.dict_flows[key]['udp_flows'])+len(self.dict_flows[key]['tcp_flows'])
+            med_pkt,mean_pkt=self._mean_median(self.dict_flows[key]['flow_packet_count'])
+            medbyte,meanbyte=self._mean_median(self.dict_flows[key]['flow_byte_count'])
+            med_dur,mean_dur=self._mean_median(self.dict_flows[key]['flow_duration'])
+            pair_flows = self._count_pair_flows(self.dict_flows[key]['udp_flows'],self.dict_flows[key]['tcp_flows'])
+            single_flows = (total_flows-(pair_flows*2))
+
+            if single_flows > 0:
+                self.single_flows_growth = ((single_flows - self.single_flows_curr)/self.single_flows_curr)*100
+                self.single_flows_curr = single_flows
+
+            if med_pkt > 0:
+                print('---------------------------------------xxxx----------------------------')
+                print('Switch con dpid - %s' % key)
+                print('---------------------------------------xxxx----------------------------')
+                print('Las estadísticas son: \n Total de flujos: %d \n Tamaño medio y mediana de paquetes: %f - %f\n'
+                ' Media de Bytes y mediana de Bytes: %f - %f\n Duración: %f - %f\n'
+                ' Flujos únicos: %d \n Flujos pares: %d \n Crecimiento de flujos únicos: %f%%' 
+                % (total_flows, med_pkt,mean_pkt,medbyte,meanbyte,med_dur,mean_dur,single_flows,pair_flows,self.single_flows_growth))
+                print('---------------------------------------xxxx----------------------------')
+                print('---------------------------------------xxxx----------------------------')
 
 
     def _request_stats(self, datapath):
@@ -105,8 +140,7 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
         flow_duration = []
         udp_flows = []
         tcp_flows = []
-        pair_flows = 0
-        single_flows = 0
+
 
         body = ev.msg.body
         for stat in sorted([flow for flow in body if flow.priority == 1],
@@ -118,39 +152,17 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
                 f.write('\n')
 
 
-            flow_packet_count.append(stat.packet_count)
-            flow_byte_count.append(stat.byte_count)
-            flow_duration.append(stat.duration_sec)
+            self.dict_flows[ev.msg.datapath.id]['flow_packet_count'].append(stat.packet_count)
+            self.dict_flows[ev.msg.datapath.id]['flow_byte_count'].append(stat.byte_count)
+            self.dict_flows[ev.msg.datapath.id]['flow_duration'].append(stat.duration_sec)
+
             if stat.match['ip_proto']==6:
-                tcp_flows.append([stat.match['tcp_src'],stat.match['tcp_dst'],stat.match['ipv4_src'],stat.match['ipv4_dst']])
+                self.dict_flows[ev.msg.datapath.id]['tcp_flows'].append([stat.match['tcp_src'],
+                stat.match['tcp_dst'],stat.match['ipv4_src'],stat.match['ipv4_dst']])
+
             elif stat.match['ip_proto']==17:
-                udp_flows.append([stat.match['udp_src'],stat.match['udp_dst'],stat.match['ipv4_src'],stat.match['ipv4_dst']])
-                
-  
-        
-        total_flows = len(udp_flows)+len(tcp_flows)
-        med_pkt,mean_pkt=self._mean_median(flow_packet_count)
-        medbyte,meanbyte=self._mean_median(flow_byte_count)
-        med_dur,mean_dur=self._mean_median(flow_duration)
-        pair_flows = self._count_pair_flows(udp_flows,tcp_flows)
-        single_flows = (len(udp_flows)+len(tcp_flows)-(pair_flows*2))
-
-        
-
-
-        if single_flows > 0:
-            self.single_flows_growth = ((single_flows - self.single_flows_curr)/self.single_flows_curr)*100
-            self.single_flows_curr = single_flows
-        
-
-        if med_pkt > 0:
-            print('---------------------------------------x----------------------------')
-            print('Las estadísticas son: \n Total de flujos: %d \n Tamaño medio y mediana de paquetes: %f - %f\n'
-                ' Media de Bytes y mediana de Bytes: %f - %f\n Duración: %f - %f\n'
-                ' Flujos únicos: %d \n Flujos pares: %d \n Crecimiento de flujos únicos: %f%%' 
-                % (total_flows, med_pkt,mean_pkt,medbyte,meanbyte,med_dur,mean_dur,single_flows,pair_flows,self.single_flows_growth))
-
-
+                self.dict_flows[ev.msg.datapath.id]['udp_flows'].append([stat.match['udp_src'],
+                stat.match['udp_dst'],stat.match['ipv4_src'],stat.match['ipv4_dst']])
 
 
             
@@ -158,4 +170,5 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
         body = ev.msg.body
+
 
