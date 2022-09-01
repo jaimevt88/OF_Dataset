@@ -29,8 +29,8 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
         super(L4SimpleMonitor13, self).__init__(*args, **kwargs)
         self.datapaths = {}
         self.monitor_thread = hub.spawn(self._monitor)
-        self.single_flows_growth = 0
-        self.single_flows_curr = 1
+        self.single_flows_growth = {}
+        self.single_flows_curr = {}
         self.dict_flows = {}
         self.seq_stats = 0
 
@@ -54,7 +54,7 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
             self.dict_flows={}
             for dp in self.datapaths.values():
                 self.dict_flows[dp.id] = {'flow_packet_count':[],'flow_byte_count':[],'flow_duration':[],
-                'udp_flows':[],'tcp_flows':[]}
+                'udp_flows':[],'tcp_flows':[],'single_flows_curr':0}
                 self._request_stats(dp)
             hub.sleep(10)
             self.seq_stats = self.seq_stats + 1
@@ -106,18 +106,23 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
             pair_flows = self._count_pair_flows(self.dict_flows[key]['udp_flows'],self.dict_flows[key]['tcp_flows'])
             single_flows = (total_flows-(pair_flows*2))
 
+            if key not in self.single_flows_curr and key not in self.single_flows_growth:
+                self.single_flows_growth[key] = 0
+                self.single_flows_curr[key] = 1
+
             if single_flows > 0:
-                self.single_flows_growth = ((single_flows - self.single_flows_curr)/self.single_flows_curr)*100
-                self.single_flows_curr = single_flows
+                self.single_flows_growth[key] = ((single_flows - self.single_flows_curr[key])/self.single_flows_curr[key])*100
+                self.single_flows_curr[key] = single_flows
 
             if med_pkt > 0:
+                #print(self.dict_flows[key])
                 print('---------------------------------------xxxx----------------------------')
                 print('Switch con dpid - %s' % key)
                 print('---------------------------------------xxxx----------------------------')
                 print('Las estadísticas son: \n Total de flujos: %d \n Tamaño medio y mediana de paquetes: %f - %f\n'
                 ' Media de Bytes y mediana de Bytes: %f - %f\n Duración: %f - %f\n'
                 ' Flujos únicos: %d \n Flujos pares: %d \n Crecimiento de flujos únicos: %f%%' 
-                % (total_flows, med_pkt,mean_pkt,medbyte,meanbyte,med_dur,mean_dur,single_flows,pair_flows,self.single_flows_growth))
+                % (total_flows, med_pkt,mean_pkt,medbyte,meanbyte,med_dur,mean_dur,single_flows,pair_flows,self.single_flows_growth[key]))
                 print('---------------------------------------xxxx----------------------------')
                 print('---------------------------------------xxxx----------------------------')
 
@@ -170,5 +175,4 @@ class L4SimpleMonitor13(L4_simple_switch_13.SimpleSwitch13):
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
         body = ev.msg.body
-
 
